@@ -1,0 +1,770 @@
+---
+title: "Japanese Baseball to the MLB"
+author: "Tyler Janak"
+date: "`r Sys.Date()`"
+output: 
+  pdf_document: 
+    toc: true
+---
+
+\newpage
+
+# The History of Japanese Players coming to the MLB
+
+We all know the current posting system was adopted in 1998. With the posting date being around for over 25 years, there are still a couple of players who came over before this was adopted. Some of the players who came over before this are Masanori Murakami, Hideo Nomo, and Hideki Irabu. Right now, the posting system has players with less than 9 years of experience get put in the international signing pool, like Roki Sasaki this past offseason. If the player has 9 or more seasons of experience in foreign professional baseball, the player can get a contract through free agency, such as Yoshinobu Yamamoto in the 2023/2024 offseason.
+
+Now I am going to look into the Japanese players who came over and have 3+ or more years of experience, or came over in the past 2 offseasons, to see if there are any trends of how increasingly popular signing Japanese players to MLB contracts is getting. All of this data for the players who transitioned and the
+
+```{r include=FALSE}
+library(tidyverse)
+library(ggplot2)
+library(readxl)
+library(e1071)
+library(rstanarm)
+```
+
+```{r include=FALSE}
+file_path <- "C:/Users/tyler/OneDrive/Documents/Japan Datasets/Past NPB Players.xlsx"
+
+sheets <- excel_sheets(file_path)
+
+data_sheets <- lapply(sheets, function(sheet) read_excel(file_path, sheet = sheet))
+
+names(data_sheets) <- sheets
+
+past_pitchers_npb <- data_sheets[["Pitchers NPB"]]
+past_hitters_npb <- data_sheets[["Hitters NPB"]]
+past_pitchers_mlb <- data_sheets[["Pitchers MLB"]]
+past_hitters_mlb <- data_sheets[["Hitters MLB"]]
+```
+
+```{r echo=FALSE}
+print(unique(past_pitchers_npb$Name))
+print(unique(past_hitters_npb$Name))
+print(unique(past_pitchers_mlb$Name))
+print(unique(past_hitters_mlb$Name))
+```
+
+Now that we see the players that are in the dataset of players who played in both the NPB and MLB, I want to see the growth of players from the late 1990s to the current day by showing each player's debut season in the MLB and in the NPB, along with their age. These players have the seasons that they played in both the NPB and MLB in the dataset. For this representation, I am going to link the hitters and pitchers together to see a full overview.
+
+```{r echo=FALSE, message=FALSE, warning=FALSE, fig.width=7, fig.height=4.5, fig.pos="h"}
+npb_data <- bind_rows(past_pitchers_npb, past_hitters_npb) %>% 
+  group_by(Name) %>% 
+  summarise(NPB_Debut_Season = min(Season), NPB_Age_Debut = Age[which.min(Season)])
+
+mlb_data <- bind_rows(past_pitchers_mlb, past_hitters_mlb) %>% 
+  group_by(Name) %>% 
+  summarise(MLB_Debut_Season = min(Season), MLB_Age_Debut = Age[which.min(Season)])
+
+
+merged_data <- inner_join(npb_data, mlb_data, by = "Name")
+earliest_year <- min(merged_data$MLB_Debut_Season)
+latest_year <- max(merged_data$MLB_Debut_Season)
+
+breaks <- seq(earliest_year, latest_year, by = 3)
+labels <- c(paste0(breaks[-length(breaks)] - 1, "-", breaks[-length(breaks)] + 1), paste0((latest_year-1), "-Present"))
+
+ggplot(merged_data, aes(x = MLB_Debut_Season)) +
+  geom_histogram(binwidth = 3, fill = "skyblue", color = "black", alpha = 0.7) +
+  scale_x_continuous(
+    breaks = breaks,
+    labels = labels
+  ) +
+  theme(axis.ticks.x = element_line(size = 0.5)) +
+  labs(title = "Growth of NPB Players Transitioning to MLB",
+       x = paste("MLB Debut Season"), 
+       y = "Number of Players") +
+  theme(axis.text.x = element_text(angle = 45, hjust = 1))
+```
+
+Now, looking at the graph, we can see the increase in Japanese players from the earlier times of players (1995-1999) coming over to the current day (2025). As we saw players who came over and found success like Hideo Nomo and Ichiro Suzuki, it shows that MLB teams have gained confidence and increased scouting with Japan's top players. This dataset is selective, only including highly rated prospects, players who had standout seasons in 2023-2024, or those with at least three years of MLB experience. This goes to help ensure that the data only focuses on players who made some impact on games while they were playing. Overall, the increasing number of NPB players in the MLB shows how the game's global picture keeps growing.
+
+# Data Used and Cleaning
+
+When looking at the data originally, there were many players who had below 15 innings, and some seasons where hitters had below 50 PA. I used these at my minimum for each player (1 IP per 10 games and 1 PA per 3 games). All of this data for the players who transitioned and the MLB and the whole NPB for the past 4 years is from Baseball-Reference.
+
+```{r echo=FALSE}
+npb_hitters_2021 <- read_excel("C:/Users/tyler/OneDrive/Documents/Japan Datasets/NPB_Hitters_2021.xlsx")
+npb_hitters_2022 <- read_excel("C:/Users/tyler/OneDrive/Documents/Japan Datasets/NPB_Hitters_2022.xlsx")
+npb_hitters_2023 <- read_excel("C:/Users/tyler/OneDrive/Documents/Japan Datasets/NPB_Hitters_2023.xlsx")
+npb_hitters_2024 <- read_excel("C:/Users/tyler/OneDrive/Documents/Japan Datasets/NPB_Hitters_2024.xlsx")
+
+npb_pitchers_2021 <- read_excel("C:/Users/tyler/OneDrive/Documents/Japan Datasets/NPB_Pitchers_2021.xlsx")
+npb_pitchers_2022 <- read_excel("C:/Users/tyler/OneDrive/Documents/Japan Datasets/NPB_Pitchers_2022.xlsx")
+npb_pitchers_2023 <- read_excel("C:/Users/tyler/OneDrive/Documents/Japan Datasets/NPB_Pitchers_2023.xlsx")
+npb_pitchers_2024 <- read_excel("C:/Users/tyler/OneDrive/Documents/Japan Datasets/NPB_Pitchers_2024.xlsx")
+
+# Convert hitter data for 2021
+npb_hitters_2021$PA <- as.numeric(npb_hitters_2021$PA)
+npb_hitters_2021$AB <- as.numeric(npb_hitters_2021$AB)
+npb_hitters_2021$H <- as.numeric(npb_hitters_2021$H)
+npb_hitters_2021$`2B` <- as.numeric(npb_hitters_2021$`2B`)
+npb_hitters_2021$`3B` <- as.numeric(npb_hitters_2021$`3B`)
+npb_hitters_2021$HR <- as.numeric(npb_hitters_2021$HR)
+npb_hitters_2021$BA <- as.numeric(npb_hitters_2021$BA)
+npb_hitters_2021$OBP <- as.numeric(npb_hitters_2021$OBP)
+npb_hitters_2021$SLG <- as.numeric(npb_hitters_2021$SLG)
+npb_hitters_2021$OPS <- as.numeric(npb_hitters_2021$OPS)
+npb_hitters_2021$SO <- as.numeric(npb_hitters_2021$SO)
+npb_hitters_2021$BB <- as.numeric(npb_hitters_2021$BB)
+npb_hitters_2021$Age <- as.numeric(npb_hitters_2021$Age)
+npb_hitters_2021$Season <- as.numeric(npb_hitters_2021$Season)
+
+# Convert hitter data for 2022
+npb_hitters_2022$PA <- as.numeric(npb_hitters_2022$PA)
+npb_hitters_2022$AB <- as.numeric(npb_hitters_2022$AB)
+npb_hitters_2022$H <- as.numeric(npb_hitters_2022$H)
+npb_hitters_2022$`2B` <- as.numeric(npb_hitters_2022$`2B`)
+npb_hitters_2022$`3B` <- as.numeric(npb_hitters_2022$`3B`)
+npb_hitters_2022$HR <- as.numeric(npb_hitters_2022$HR)
+npb_hitters_2022$BA <- as.numeric(npb_hitters_2022$BA)
+npb_hitters_2022$OBP <- as.numeric(npb_hitters_2022$OBP)
+npb_hitters_2022$SLG <- as.numeric(npb_hitters_2022$SLG)
+npb_hitters_2022$OPS <- as.numeric(npb_hitters_2022$OPS)
+npb_hitters_2022$SO <- as.numeric(npb_hitters_2022$SO)
+npb_hitters_2022$BB <- as.numeric(npb_hitters_2022$BB)
+npb_hitters_2022$Age <- as.numeric(npb_hitters_2022$Age)
+npb_hitters_2022$Season <- as.numeric(npb_hitters_2022$Season)
+
+# Convert hitter data for 2023
+npb_hitters_2023$PA <- as.numeric(npb_hitters_2023$PA)
+npb_hitters_2023$AB <- as.numeric(npb_hitters_2023$AB)
+npb_hitters_2023$H <- as.numeric(npb_hitters_2023$H)
+npb_hitters_2023$`2B` <- as.numeric(npb_hitters_2023$`2B`)
+npb_hitters_2023$`3B` <- as.numeric(npb_hitters_2023$`3B`)
+npb_hitters_2023$HR <- as.numeric(npb_hitters_2023$HR)
+npb_hitters_2023$BA <- as.numeric(npb_hitters_2023$BA)
+npb_hitters_2023$OBP <- as.numeric(npb_hitters_2023$OBP)
+npb_hitters_2023$SLG <- as.numeric(npb_hitters_2023$SLG)
+npb_hitters_2023$OPS <- as.numeric(npb_hitters_2023$OPS)
+npb_hitters_2023$SO <- as.numeric(npb_hitters_2023$SO)
+npb_hitters_2023$BB <- as.numeric(npb_hitters_2023$BB)
+npb_hitters_2023$Age <- as.numeric(npb_hitters_2023$Age)
+npb_hitters_2023$Season <- as.numeric(npb_hitters_2023$Season)
+
+# Convert hitter data for 2024
+npb_hitters_2024$PA <- as.numeric(npb_hitters_2024$PA)
+npb_hitters_2024$AB <- as.numeric(npb_hitters_2024$AB)
+npb_hitters_2024$H <- as.numeric(npb_hitters_2024$H)
+npb_hitters_2024$`2B` <- as.numeric(npb_hitters_2024$`2B`)
+npb_hitters_2024$`3B` <- as.numeric(npb_hitters_2024$`3B`)
+npb_hitters_2024$HR <- as.numeric(npb_hitters_2024$HR)
+npb_hitters_2024$BA <- as.numeric(npb_hitters_2024$BA)
+npb_hitters_2024$OBP <- as.numeric(npb_hitters_2024$OBP)
+npb_hitters_2024$SLG <- as.numeric(npb_hitters_2024$SLG)
+npb_hitters_2024$OPS <- as.numeric(npb_hitters_2024$OPS)
+npb_hitters_2024$SO <- as.numeric(npb_hitters_2024$SO)
+npb_hitters_2024$BB <- as.numeric(npb_hitters_2024$BB)
+npb_hitters_2024$Age <- as.numeric(npb_hitters_2024$Age)
+npb_hitters_2024$Season <- as.numeric(npb_hitters_2024$Season)
+
+# Convert pitcher data for 2021
+npb_pitchers_2021$W <- as.numeric(npb_pitchers_2021$W)
+npb_pitchers_2021$L <- as.numeric(npb_pitchers_2021$L)
+npb_pitchers_2021$ERA <- as.numeric(npb_pitchers_2021$ERA)
+npb_pitchers_2021$G <- as.numeric(npb_pitchers_2021$G)
+npb_pitchers_2021$SV <- as.numeric(npb_pitchers_2021$SV)
+npb_pitchers_2021$IP <- as.numeric(npb_pitchers_2021$IP)
+npb_pitchers_2021$H <- as.numeric(npb_pitchers_2021$H)
+npb_pitchers_2021$ER <- as.numeric(npb_pitchers_2021$ER)
+npb_pitchers_2021$BB <- as.numeric(npb_pitchers_2021$BB)
+npb_pitchers_2021$SO <- as.numeric(npb_pitchers_2021$SO)
+npb_pitchers_2021$WHIP <- as.numeric(npb_pitchers_2021$WHIP)
+npb_pitchers_2021$H9 <- as.numeric(npb_pitchers_2021$H9)
+npb_pitchers_2021$BB9 <- as.numeric(npb_pitchers_2021$BB9)
+npb_pitchers_2021$SO9 <- as.numeric(npb_pitchers_2021$SO9)
+npb_pitchers_2021$Age <- as.numeric(npb_pitchers_2021$Age)
+npb_pitchers_2021$Season <- as.numeric(npb_pitchers_2021$Season)
+
+# Convert pitcher data for 2022
+npb_pitchers_2022$W <- as.numeric(npb_pitchers_2022$W)
+npb_pitchers_2022$L <- as.numeric(npb_pitchers_2022$L)
+npb_pitchers_2022$ERA <- as.numeric(npb_pitchers_2022$ERA)
+npb_pitchers_2022$G <- as.numeric(npb_pitchers_2022$G)
+npb_pitchers_2022$SV <- as.numeric(npb_pitchers_2022$SV)
+npb_pitchers_2022$IP <- as.numeric(npb_pitchers_2022$IP)
+npb_pitchers_2022$H <- as.numeric(npb_pitchers_2022$H)
+npb_pitchers_2022$ER <- as.numeric(npb_pitchers_2022$ER)
+npb_pitchers_2022$BB <- as.numeric(npb_pitchers_2022$BB)
+npb_pitchers_2022$SO <- as.numeric(npb_pitchers_2022$SO)
+npb_pitchers_2022$WHIP <- as.numeric(npb_pitchers_2022$WHIP)
+npb_pitchers_2022$H9 <- as.numeric(npb_pitchers_2022$H9)
+npb_pitchers_2022$BB9 <- as.numeric(npb_pitchers_2022$BB9)
+npb_pitchers_2022$SO9 <- as.numeric(npb_pitchers_2022$SO9)
+npb_pitchers_2022$Age <- as.numeric(npb_pitchers_2022$Age)
+npb_pitchers_2022$Season <- as.numeric(npb_pitchers_2022$Season)
+
+# Convert pitcher data for 2023
+npb_pitchers_2023$W <- as.numeric(npb_pitchers_2023$W)
+npb_pitchers_2023$L <- as.numeric(npb_pitchers_2023$L)
+npb_pitchers_2023$ERA <- as.numeric(npb_pitchers_2023$ERA)
+npb_pitchers_2023$G <- as.numeric(npb_pitchers_2023$G)
+npb_pitchers_2023$SV <- as.numeric(npb_pitchers_2023$SV)
+npb_pitchers_2023$IP <- as.numeric(npb_pitchers_2023$IP)
+npb_pitchers_2023$H <- as.numeric(npb_pitchers_2023$H)
+npb_pitchers_2023$ER <- as.numeric(npb_pitchers_2023$ER)
+npb_pitchers_2023$BB <- as.numeric(npb_pitchers_2023$BB)
+npb_pitchers_2023$SO <- as.numeric(npb_pitchers_2023$SO)
+npb_pitchers_2023$WHIP <- as.numeric(npb_pitchers_2023$WHIP)
+npb_pitchers_2023$H9 <- as.numeric(npb_pitchers_2023$H9)
+npb_pitchers_2023$BB9 <- as.numeric(npb_pitchers_2023$BB9)
+npb_pitchers_2023$SO9 <- as.numeric(npb_pitchers_2023$SO9)
+npb_pitchers_2023$Age <- as.numeric(npb_pitchers_2023$Age)
+npb_pitchers_2023$Season <- as.numeric(npb_pitchers_2023$Season)
+
+# Convert pitcher data for 2024
+npb_pitchers_2024$W <- as.numeric(npb_pitchers_2024$W)
+npb_pitchers_2024$L <- as.numeric(npb_pitchers_2024$L)
+npb_pitchers_2024$ERA <- as.numeric(npb_pitchers_2024$ERA)
+npb_pitchers_2024$G <- as.numeric(npb_pitchers_2024$G)
+npb_pitchers_2024$SV <- as.numeric(npb_pitchers_2024$SV)
+npb_pitchers_2024$IP <- as.numeric(npb_pitchers_2024$IP)
+npb_pitchers_2024$H <- as.numeric(npb_pitchers_2024$H)
+npb_pitchers_2024$ER <- as.numeric(npb_pitchers_2024$ER)
+npb_pitchers_2024$BB <- as.numeric(npb_pitchers_2024$BB)
+npb_pitchers_2024$SO <- as.numeric(npb_pitchers_2024$SO)
+npb_pitchers_2024$WHIP <- as.numeric(npb_pitchers_2024$WHIP)
+npb_pitchers_2024$H9 <- as.numeric(npb_pitchers_2024$H9)
+npb_pitchers_2024$BB9 <- as.numeric(npb_pitchers_2024$BB9)
+npb_pitchers_2024$SO9 <- as.numeric(npb_pitchers_2024$SO9)
+npb_pitchers_2024$Age <- as.numeric(npb_pitchers_2024$Age)
+npb_pitchers_2024$Season <- as.numeric(npb_pitchers_2024$Season)
+
+combined_npb_hitters_data <- bind_rows(npb_hitters_2021, npb_hitters_2022, npb_hitters_2023, npb_hitters_2024)
+combined_npb_pitchers_data <- bind_rows(npb_pitchers_2021, npb_pitchers_2022, npb_pitchers_2023, npb_pitchers_2024)
+
+combined_npb_hitters_data_2 <- bind_rows(npb_hitters_2022, npb_hitters_2023, npb_hitters_2024)
+combined_npb_pitchers_data_2 <- bind_rows(npb_pitchers_2022, npb_pitchers_2023, npb_pitchers_2024)
+
+past_hitters_npb$K_percent <- (past_hitters_npb$SO / past_hitters_npb$PA) * 100
+
+combined_npb_hitters_data$K_percent <- (combined_npb_hitters_data$SO / combined_npb_hitters_data$PA) * 100
+
+
+past_pitchers_npb <- past_pitchers_npb %>%
+  mutate(SO_BB = ifelse(BB == 0, NA, SO / BB))
+
+combined_npb_pitchers_data<- combined_npb_pitchers_data %>%
+  mutate(SO_BB = ifelse(BB == 0, NA, SO / BB))
+```
+
+# Compare Stats from the Past 4 Years to the players who Transitioned
+
+I will be looking at 4 stats that are basic stats, but to me, show players' value towards winning. These 4 stats are OPS (On-Base plus Slugging Percent), K% (Strikeout Percentage), K/9 (Strikeouts on average per 9 innings), and K/BB (Strikeouts to Walk Ratio).
+
+## Hitters
+
+OPS (On-Base Plus Slugging Percentage):
+
+-   OPS is a stat that combines a player’s skill at getting on base (on-base percentage) with their power hitting (slugging percentage).
+-   It can give you the overall offensive value of a player, because it factors in the player’s ability to be consistent, on base, and hit for extra bases.
+-   High OPS values correlate strongly with run production, which is a key metric for winning games.
+-   It is a broad metric of the overall offensive production of a player.
+
+K% (Strikeout Percentage):
+
+-   Strikeout percentage is the percentage of plate appearances in which a hitter strikes out.
+-   High K% can show a hitter's lack of consistency in making contact with pitches, and can lead to more missed opportunities.
+-   Although some power hitters may have a high strikeout percentage, more often than not, a high K% is often a reflection of poor plate discipline and lower offensive efficiency.
+-   A low K% is a good projectability sign since it shows a hitter's barrel control and ability to put the ball in play, which typically raises on-base percentage and increases scoring opportunities.
+
+## Pitchers
+
+K/9 (Strikeouts per 9 Innings):
+
+-   K/9 measures pitchers' ability to strike out opposing batters.
+-   A high K/9 suggests a pitcher's dominance and ability to stifle opposing offenses based on a combination of the ability to make good pitches and induce swings and misses by the batter.
+-   Strikeouts reduce the chance of balls being put into play, in turn reducing the chances for hits and runs.
+-   K/9 can be a pretty solid indicator of the ability of a pitcher to get outs.
+
+K/BB (Strikeout to Walk Ratio):
+
+-   K/BB ratio shows a pitcher’s ability to strike out batters compared to walking them.
+-   A High K/BB ratio shows a pitcher controlling the zone, striking hitters out, while not allowing free passes.
+-   A lower ratio indicates that a pitcher is not having success with command and control, ultimately allowing more opportunities for batters to get on base by walking, while also not have good "stuff" to get swings and misses.
+-   A K/BB ratio is a good predictor of pitcher effectiveness, as it shows success in getting swings and misses while also managing an effective pitch count.
+
+I will examine the statistics to show some of the differences that separate players who move to the MLB from the normal NPB player. Again, the statistics are rather simplistic, but they are basic to understand a player's contribution to the success of the team.
+
+## Hypothesis about the Data
+
+Having the knowledge of baseball that I do, I hypothesize that players who transition from NPB to MLB will show a consistently higher overall statistical floor and more consistency in important stats than players who stay in NPB. Rather than focusing on peaks or extreme performances, these players will have the opportunity to provide consistent value in OPS and home runs for hitters, and K/9 and WHIP for pitchers. Furthermore, reliable production from players transitioning to MLB indicates not just talent, but an advanced skill set and maturity, representative of created ability to adapt to the competitive level associated with MLB.
+
+For hitters, traits such as plate discipline, contact ability, and power all likely contribute to an overall strong line: good OPS and at least average home run totals. Similarly, pitchers with manageable WHIP levels, in addition to counting stats such as strikeout totals, are exhibiting some command and control, some of the most useful traits in pitching at the MLB level. Consequently, I believe that the most projectable players coming from NPB will not necessarily be recognized for their exploits in the peaks of statistics, but rather, guys that produce their value with consistent production, efficiency, in multiple parts of the game.
+
+## OPS Distribution Comparisons
+
+```{r echo=FALSE, warning=FALSE, fig.width=7, fig.height=4.5, fig.pos="h"}
+ggplot(combined_npb_hitters_data, aes(x = OPS)) +
+  geom_histogram(binwidth = 0.05, fill = "skyblue", color = "black") +
+  labs(title = "Histogram of OPS (NPB Last 4 Seasons)", x = "OPS", y = "Count") +
+  scale_x_continuous(limits = c(.25, 1.2), breaks = seq(.3, 1.2, by = 0.05)) +
+  theme(axis.text.x = element_text(angle = 45, hjust = 1), plot.title = element_text(hjust = 0.5))
+```
+
+```{r echo=FALSE, warning=FALSE, fig.width=7, fig.height=4.5, fig.pos="h"}
+ggplot(past_hitters_npb, aes(x = OPS)) +
+  geom_histogram(binwidth = 0.05, fill = "salmon", color = "black") +
+  labs(title = "Histogram of OPS (Players Transitioned NPB to MLB)", x = "OPS", y = "Count") +
+  scale_x_continuous(limits = c(.25, 1.2), breaks = seq(.3, 1.2, by = 0.05)) +
+  theme(axis.text.x = element_text(angle = 45, hjust = 1), plot.title = element_text(hjust = 0.5))
+```
+
+For the first stat comparison, I used OPS. When comparing, I used NPB players, differentiating between the general NPB population and those who transitioned to MLB. The general NPB players' OPS histogram was skewed to the right, while the players who transitioned was skewed to the left. This makes sense because you have a lower skill floor with fewer players who play at the highest of level for the general NPB population whereas the players who transitioned all had to have multiple seasons at a very high level to get signed to Major League clubs while also having some seasons where they struggled (as this data is their whole NPB career). The general NPB population's histogram exhibits a peak around 0.650-0.700, which is much lower than the players who transitioned, where the bulk of their seasons come in around a 0.950-1.000 OPS, which shows their overall performance is much better than the league's 4-year average.
+
+Key Takeaways:
+
+-   Players transitioning to MLB demonstrate consistently higher OPS in NPB, highlighting the selective nature of MLB scouting.
+-   The differing OPS distributions between general NPB players and those transitioning reflect the broader skill range versus consistently high performance.
+-   OPS looks to be a stat that directly correlates with MLB teams looking at the player. There are some lower seasons, but they are likely in the beginning of their careers. It looks as if the baseline should be set at 0.850 for forecasting players who will come over.
+
+## K% Distribution Comparisons
+
+```{r echo=FALSE, warning=FALSE, fig.width=7, fig.height=4.5, fig.pos="h"}
+ggplot(combined_npb_hitters_data, aes(x = K_percent)) +
+  geom_histogram(binwidth = 2, fill = "skyblue", color = "black") +
+  labs(title = "Histogram of K% (NPB Last 4 Seasons)", x = "K%", y = "Count") +
+  scale_x_continuous(limits = c(0, 45), breaks = seq(0, 45, by = 4)) +
+  theme(plot.title = element_text(hjust = 0.5))
+```
+
+```{r echo=FALSE, warning=FALSE, fig.width=7, fig.height=4.5, fig.pos="h"}
+ggplot(past_hitters_npb, aes(x = K_percent)) +
+  geom_histogram(binwidth = 2, fill = "salmon", color = "black") +
+  labs(title = "Histogram of K% (Players Transitioned NPB to MLB)", x = "K%", y = "Count") +
+  scale_x_continuous(limits = c(0, 45), breaks = seq(0, 45, by = 4)) +
+  theme(plot.title = element_text(hjust = 0.5))
+```
+
+The two histograms show strikeout percentage distributions in NPB, including the general population of players over four seasons, compared to players who transitioned to MLB. The histogram for K% in NPB has a peak around 18-20% and a count of about 80, indicating that more players are within this distribution, and a range up to about 44% K%. In the players who transitioned histogram, K% has a peak at a slightly lower percentage around 16-18% and a much smaller count below (around 12), meaning there were fewer players in total, but a range to about 36% K%. The players who transitioned graph also has a steeper downward trend (drop-off) after the peak, meaning there were fewer players that achieved higher K%, whereas the downward trend of K% in the NPB graph is more gradual and remains higher than the equivalent percentage for the players who transitioned.
+
+Key Takeaways:
+
+-   Transitioning NPB to MLB players showed a peak of strikeout rate at a K% of 16-18%, which is slightly below the league averages of 18-20%, indicating that transitioning players underperformed in K%.
+-   NPB players exhibited a wider K% range (sample size up to 80 players, with a maximum of K% of 44), while transitioning players (sample size up to 12 players, with a maximum of K% of 36), showed a steeper drop off which demonstrates that there are fewer players who reached higher K%.
+-   Most transitioning players clustered around a K% of 16-18%, suggesting that K% is likely closer to a baseline of around 16% when forecasting the rest of MLB to transition out of NPB.
+
+## K/9 Distrubution Comparisons
+
+```{r echo=FALSE, warning=FALSE, fig.width=7, fig.height=4.5, fig.pos="h"}
+ggplot(combined_npb_pitchers_data, aes(x = SO9)) + 
+  geom_histogram(binwidth = 0.5, fill = "lightgreen", color = "black") +
+  labs(title = "Histogram of K/9 (NPB Last 4 Seasons)", x = "K/9", y = "Count") +
+  scale_x_continuous(limits = c(2, 17), breaks = seq(0, 16, by = 1)) +
+  theme(plot.title = element_text(hjust = 0.5))
+```
+
+```{r echo=FALSE, warning=FALSE, fig.width=7, fig.height=4.5, fig.pos="h"}
+ggplot(past_pitchers_npb, aes(x = SO9)) + 
+  geom_histogram(binwidth = 0.5, fill = "#C27EF5", color = "black") +
+  labs(title = "Histogram of K/9 (Players Transitioned NPB to MLB)", x = "K/9", y = "Count") +
+  scale_x_continuous(limits = c(2, 17), breaks = seq(0, 16, by = 1)) +
+  theme(plot.title = element_text(hjust = 0.5))
+```
+
+The graphs above present K/9 (strikeouts per 9 innings) rates for NPB pitchers, comparing the entire NPB population to players who moved to the MLB. The first K/9 distribution for the total NPB population appears to be roughly normal with lower K/9 rates. This suggests that strikeout rates tend to cluster and are typical or consistent which would provide MLB scouts with a reliable K/9 indication when assessing NPB pitchers or players transitioning to MLB. Conversely, the second K/9 distribution for players transitioning to the MLB is less normal and clusters in higher K/9 ranges. Although players moving to MLB will tend to have higher K/9 rates than the average NPB player does, their distributions are less consistent than the NPB population.
+
+Key Takeaways:
+
+-   Players moving to MLB have reassuringly greater than the average K/9 rates during their time in the NPB.
+-   Although players transitioning to MLB have greater than average K/9 abilities, their K/9 distributions are considerably more sporadic compared to the average NPB population.
+-   The K/9 that the baseline should be set at for forecasting is roughly 7, but emphasizing those who are closer to 9-11. This looks to be a stat that is important for forecasting whether a player could make the move to the MLB or not.
+
+## K/BB Distribution Comparisons
+
+```{r echo=FALSE, warning=FALSE, fig.width=7, fig.height=4.5, fig.pos="h"}
+ggplot(combined_npb_pitchers_data, aes(x = SO_BB)) +
+  geom_histogram(binwidth = .5, fill = "lightgreen", color = "black") +
+  labs(title = "Histogram of K?BB (NPB Last 4 Seasons)", x = "K/BB", y = "Count") +
+  scale_x_continuous(limits = c(0, 19), breaks = seq(0, 18, by = 1)) +
+  theme(axis.text.x = element_text(hjust = 1), plot.title = element_text(hjust = 0.5))
+```
+
+```{r echo=FALSE, warning=FALSE, fig.width=7, fig.height=4.5, fig.pos="h"}
+ggplot(past_pitchers_npb, aes(x = SO_BB)) +
+  geom_histogram(binwidth = .5, fill = "#C27EF5", color = "black") +
+  labs(title = "Histogram of K/BB (Players Transitioned NPB to MLB)", x = "K/BB", y = "Count") +
+  scale_x_continuous(limits = c(0, 19), breaks = seq(0, 18, by = 1)) +
+  theme(axis.text.x = element_text(hjust = 1), plot.title = element_text(hjust = 0.5))
+```
+
+The two histograms show the distribution of K/BB (strikeout-to-walk ratio) for baseball players, with the first histogram showing NPB players over the past four seasons and the second showing players who transitioned from NPB to MLB. The histogram for NPB players is concentrated around 2-3 K/BB, with a count of almost 150, which indicates a larger sample size of players that were moderately controlled with some strikeout ability, extending out to around 18 K/BB. The histogram with players who transitioned peaked at 3-4 K/BB but with much lower count (around 25), indicating that the sample size of players transitioning is much smaller and also extended out to around 16 K/BB. The players who transitioned have a slightly more pronounced drop off after the peak compared to the NPB graph, suggesting that more players who transitioned are able to maintain high K/BB ratios, but that the general distribution of players that transitioned is more consistent as a group.
+
+Key Takeaways:
+
+-   Players who transitioned from the NPB to the MLB at the major league level did so with a higher K/BB peak (3 - 4) while the NPB average K/BB is at the level of 2-3 K/BB, which implies that MLB scouts players who can control their pitching and strikeout batters.
+-   In the NPB, players have a wider range in K/BB (all the way to 150, and also up to 18), while players who also transitioned had a wider range (up to 25 and max of 16 K/BB) but a more consistent distribution of results, with a significant drop-off.
+-   Transition players clustered together around a peak of K/BB of 3 - 4 K/BB, which indicates that K/BB is at its baseline around a K/BB of 3.0, for predicting the likelihood of transitioning to MLB.
+
+# Age vs These Stats
+
+Now I will will examine players’ ages with respect to performance, as MLB teams often desire younger players with future upside. To that end, I will consider performance in conjunction with age and measure overall output using significant statistics. In the case of hitters, I will present scatter plots of performance by age vs. On-Base Plus Slugging (OPS) and home runs (HR) from the data for each group of players (players who transitioned to the MLB and the general NPB population). For pitchers, I will create scatter plots of age vs. strikeouts per nine innings (K/9) and walks plus hits per innings pitched (WHIP). The goal with this method is to gain insight into the expected peak performance statistics that would help to set minimum and maximum values for when players are going to move over to the MLB from the NPB for my model's accuracy.
+
+## Hitters
+
+```{r echo=FALSE, warning=FALSE, fig.width=7, fig.height=4.5, fig.pos="h"}
+ggplot(combined_npb_hitters_data, aes(x = cut_width(Age, width = 2, boundary = 17, labels = c("18-19", "20-21", "22-23", "24-25", "26-27", "28-29", "30-31", "32-33", "34-35", "36-37", "38-39", "40-41", "42-43", "44-45")), y = OPS)) +
+  geom_boxplot(fill = "skyblue", color = "black") +
+  geom_jitter(width = 0.25, alpha = 0.5) +
+  labs(x = "Age (2-Year Bins)", y = "OPS", title = "Age vs. OPS Box Plot (NPB Last 4 Seasons)") +
+  theme(axis.text.x = element_text(angle = 45, hjust = 1), plot.title = element_text(hjust = 0.5))
+```
+
+```{r echo=FALSE, warning=FALSE, fig.width=7, fig.height=4.5, fig.pos="h"}
+ggplot(past_hitters_npb, aes(x = cut_width(Age, width = 2, boundary = min(Age) - 1, labels = c("18-19", "20-21", "22-23", "24-25", "26-27", "28-29", "30-31")), y = OPS)) +
+  geom_boxplot(fill = "salmon", color = "black") +
+  geom_jitter(width = 0.25, alpha = 0.5) +
+  labs(x = "Age (2-Year Bins)", y = "OPS", title = "Age vs. OPS Box Plot (Players Transitioned NPB to MLB)") +
+  theme(plot.title = element_text(hjust = 0.5))
+```
+
+```{r echo=FALSE, warning=FALSE, fig.width=7, fig.height=4.5, fig.pos="h"}
+ggplot(combined_npb_hitters_data, aes(x = cut_width(Age, width = 2, boundary = 17, labels = c("18-19", "20-21", "22-23", "24-25", "26-27", "28-29", "30-31", "32-33", "34-35", "36-37", "38-39", "40-41", "42-43", "44-45")), y = K_percent)) +
+  geom_boxplot(fill = "skyblue", color = "black") +
+  geom_jitter(width = 0.25, alpha = 0.75) +
+  labs(x = "Age (2-Year Bins)", y = "K%", title = "Age vs. K% (NPB Last 4 Seasons)") +
+  theme(axis.text.x = element_text(angle = 45, hjust = 1), plot.title = element_text(hjust = 0.5))
+```
+
+```{r echo=FALSE, warning=FALSE, fig.width=7, fig.height=4.5, fig.pos="h"}
+ggplot(past_hitters_npb, aes(x = cut_width(Age, width = 2, boundary = min(Age) - 1, labels = c("18-19", "20-21", "22-23", "24-25", "26-27", "28-29", "30-31")), y = K_percent)) +
+  geom_boxplot(fill = "salmon", color = "black") +
+  geom_jitter(width = 0.25, alpha = 0.5) +
+  labs(x = "Age (2-Year Bins)", y = "K%", title = "Age vs. K% (Players Transitioned NPB to MLB)") +
+  theme(plot.title = element_text(hjust = 0.5))
+```
+
+The "Age vs OPS" box plots show OPS increases with age, peaks in the late 20s to early 30s, and then decreases. Players who successfully transitioned to MLB have consistently higher OPS compared with the average NPB population, especially in their mid-20s. This once again conveys the idea that MLB teams want players with the strongest possible overall offensive players, that is, players with high on-base percentage and slugging, and players who have substantially higher OPS than the average NPB player.
+
+The box plots compare the K% and age distributions for the players from NPB and those who transitioned to the MLB. The NPB box plot includes ages 18-46, with median K% falling around 15-20%, but the younger bins (18-23) and the older bin (40 ) show much more variability with outliers as high as 40%. The players who transferred to MLB are contained to ages 18-31, but median K% are still around the 15-20% range. However, the younger 18-19 bin median is around 25%, and the older bins (26-31) seem to taper in a minor increase in variability. Overall, the NPB players have more data and outliers, while the MLB players seem to be a smaller, more elite and selective group, with fewer extreme rates of K%. Key Takeaways:
+
+-   Most players hit their peak offensive production (OPS and K%) in their mid to late 20s.
+-   Most players move to MLB from the ages of 25 and 31, which coincides with peak offensive production.
+-   Players who make their NPB debut early are more likely to transition into MLB because they have the most professional experience.
+-   These show that for hitters, a hard cap should be set at 31 years old, while keeping an emphasis on the 24-28 age range.
+
+## Pitchers
+
+```{r echo=FALSE, warning=FALSE, fig.width=7, fig.height=4.5, fig.pos="h"}
+ggplot(combined_npb_pitchers_data, aes(x = cut_width(Age, width = 2, boundary = 18, labels = c("19-20", "21-22", "23-24", "25-26", "27-28", "29-30", "31-32", "33-34", "35-36", "37-38", "39-40", "41-42", "43-44")), y = SO9)) +
+  geom_boxplot(fill = "lightgreen", color = "black") +
+  geom_jitter(width = 0.25, alpha = 0.5) +
+  labs(x = "Age (2-Year Bins)", y = "K/9", title = "Age vs. K/9 Box Plot (NPB Last 4 Seasons)") +
+  theme(axis.text.x = element_text(angle = 45, hjust = 1), plot.title = element_text(hjust = 0.5))
+```
+
+```{r echo=FALSE, warning=FALSE, fig.width=7, fig.height=4.5, fig.pos="h"}
+ggplot(past_pitchers_npb, aes(x = cut_width(Age, width = 2, boundary = min(Age) - 1, labels = c("18-19", "20-21", "22-23", "24-25", "26-27", "28-29", "30-31", "32-33", "34-35")), y = SO9)) +
+  geom_boxplot(fill = "#C27EF5", color = "black") +
+  geom_jitter(width = 0.25, alpha = 0.5) +
+  labs(x = "Age (2-Year Bins)", y = "K/9", title = "Age vs. K/9 Box Plot (Players Transitioned NPB to MLB)") +
+  theme(plot.title = element_text(hjust = 0.5))
+```
+
+```{r echo=FALSE, warning=FALSE, fig.width=7, fig.height=4.5, fig.pos="h"}
+ggplot(combined_npb_pitchers_data, aes(x = cut_width(Age, width = 2, boundary = 18, labels = c("19-20", "21-22", "23-24", "25-26", "27-28", "29-30", "31-32", "33-34", "35-36", "37-38", "39-40", "41-42", "43-44")), y = SO_BB)) +
+  geom_boxplot(fill = "lightgreen", color = "black") +
+  geom_jitter(width = 0.25, alpha = 0.5) +
+  labs(x = "Age (2-Year Bins)", y = "K/BB", title = "Age vs. K/BB Box Plot (NPB Last 4 Seasons)") +
+  theme(axis.text.x = element_text(angle = 45, hjust = 1), plot.title = element_text(hjust = 0.5))
+```
+
+```{r echo=FALSE, warning=FALSE, fig.width=7, fig.height=4.5, fig.pos="h"}
+ggplot(past_pitchers_npb, aes(x = cut_width(Age, width = 2, boundary = min(Age)-1, labels = c("18-19", "20-21", "22-23", "24-25", "26-27", "28-29", "30-31", "32-33", "34-35")), y = SO_BB)) +
+  geom_boxplot(fill = "#C27EF5", color = "black") +
+  geom_jitter(width = 0.25, alpha = 0.5) +
+  labs(x = "Age (2-Year Bins)", y = "K/BB", title = "Age vs. K/BB Box Plot (Players Transitioned NPB to MLB)") +
+  theme(plot.title = element_text(hjust = 0.5))
+```
+
+The K/9 storytelling sheds light on the overall NPB population (2021-2024), where the median K/9 variables for ages 22-35 hover between 6-7, with the younger (19-21) and older (36 ) demonstrating lower medians and more of a variance. Peak K/9 performance in the NPB seems to occur during ages 24-31 (median K/9 ranges of 6.5-7, with the very upper ends having some isolated high outliers), while NPB pitchers transitioning to MLB (2021-2024 highest age 18-31) seem to have a continuous trend towards slightly higher K/9 rates (8-9, median K/9 around 9 between ages 24-27 is the high point). This change reflects MLB teams' emphasis in recruiting NPB pitchers with very significantly above average K/9, especially ages 24-27. K/9 performances even longer in the past (prior to 2021) demonstrate that K/9 is possible for transitioning pitchers, even into older age ranges (32-35).
+
+The two box plots illustrate how age relates to K/BB (strikeout-to-walk ratio) for NPB players in the last four seasons and NPB players who transferred to MLB. The NPB players box plot accounts for ages 19-44 and shows medians primarily in the range of 2-3 K/BB, indicating that players have very consistent control within the age bins, although younger (19-24) and older (40) bins demonstrate slightly more variability and dropouts with K/BB ratios as high as 16. The plot for NPB players transferring to MLB spans ages 18-35 and has medians also around 2-3 K/BB, but the 18-19 year-old bin includes a median that is slightly higher (closer to 4) while demonstrating greater variability. The older age bins (26-35) show more consistency with a tighter range. Additionally, the NPB box plot contains more data points along the box plot, as there is a larger population of players in NPB compared to players transitioning to MLB. Furthermore, players transferring to MLB include a smaller population (more of a selective pool) of players with much less variable (extreme) K/BB values.
+
+Key Takeaways:
+
+-   NPB pitchers experience their peak in K/9 (6.5-7) between ages 24-31, while transitioning pitchers have higher K/9 with peak medians of 9 between ages 24-27.
+-   The age when the majority of NPB pitchers transition to MLB is between ages 18-31. It appears that K/9 rates among these pitchers reach the highest rate (around 9) ages 24-27, reflecting MLB’s motivation to acquire pitchers near their peak season.
+-   Pitchers who have dual classification have a median K/BB of 2-3 (similar to NPB), and younger transitioning players show a higher median (around 4) K/BB with more variation; K/BB generally decreases with added years of experience.
+-   MLB is trying to acquire NPB pitchers who have above-average K/9 rates (around 8-9) and good yet consistent K/BB rates (around 3-4). Again, it appears that NPB pitchers between ages 24-27 are targeted after their peak era of pitching, which is 24-31. There is likely a cap of 30-35 years on how long NPB pitchers will be able to be competitive in MLB.
+
+# Model Building
+
+```{r include=FALSE}
+library(car)
+```
+
+## Logistic Regression Model
+
+```{r echo=FALSE}
+model_test_hitters_data <- read_excel("C:/Users/tyler/OneDrive/Documents/Model Hitters Test Data.xlsx")
+
+model_test_hitters_data$K_percent <- (model_test_hitters_data$SO / model_test_hitters_data$PA) * 100
+
+model_test_hitters_data <- model_test_hitters_data %>%
+  mutate(transitioned = ifelse(Name %in% past_hitters_mlb$Name, 1, 0))
+
+model_test_hitters_data <- model_test_hitters_data %>%
+  mutate(age_group = case_when(
+    Age < 26 ~ "young",
+    Age >= 26 & Age < 30 ~ "mid-career",
+    Age >= 30 ~ "veteran"
+  ))
+
+model_test_hitters_data$age_group <- factor(model_test_hitters_data$age_group,
+                                       levels = c("young", "mid-career", "veteran"))
+
+model_hitters <- glm(
+  transitioned ~ age_group + OPS + K_percent, 
+  data = model_test_hitters_data,
+  family = binomial
+)
+
+summary(model_hitters)
+```
+
+```{r echo=FALSE}
+model_test_pitchers_data <- read_excel("C:/Users/tyler/OneDrive/Documents/Model Pitchers Test Data.xlsx")
+
+model_test_pitchers_data <- model_test_pitchers_data %>%
+  mutate(SO_BB = ifelse(BB == 0, NA, SO / BB))
+
+model_test_pitchers_data <- model_test_pitchers_data %>%
+  mutate(transitioned = ifelse(Name %in% past_pitchers_mlb$Name, 1, 0))
+
+model_test_pitchers_data <- model_test_pitchers_data %>%
+  mutate(age_group = case_when(
+    Age < 26 ~ "young",
+    Age >= 26 & Age < 32 ~ "mid-career",
+    Age >= 32 ~ "veteran"
+  ))
+
+model_test_pitchers_data$age_group <- factor(model_test_pitchers_data$age_group,
+                                       levels = c("young", "mid-career", "veteran"))
+
+model_test_pitchers_data <- model_test_pitchers_data %>%
+  mutate(IP_G = IP / G)
+
+model_test_pitchers_data <- model_test_pitchers_data %>%
+  mutate(reliever_flag = ifelse(IP_G < 3, 1, 0))
+
+model_pitchers <- glm(
+  transitioned ~ age_group + SO9  + SO_BB + IP,
+  data = model_test_pitchers_data,
+  family = binomial
+)
+
+summary(model_pitchers)
+```
+
+### Hitters Multicollinearity Test
+
+```{r echo=FALSE}
+vif(model_hitters)
+```
+
+When creating the hitters model while also trying to limit multicollinearity (all variables must have VIFs below 5), I arrived at my core variables, Age, OPS, and K%. Age is an important component for considering player development and future potential. OPS is another value that captures offensive performance and will account for each hitter's on-base ability and power all in one measure. K% is just another way to quantify plate discipline and the likelihood and/or degree in a hitter's avoidance of strikeouts; K% will provide more context about the hitters approach and contact skills than other metrics. I purposely did not include other established metrics for measuring hitting such as OBP, SLG, or BA, that are very much tied to OPS and other variables in the model, because they are so correlated they could introduce redundancy. Collectively, each of these inputs provides unique and complementary information about a hitter's profile while respecting statistical inference and baseball representation.
+
+### Pitchers Multicollinearity Test
+
+```{r echo=FALSE}
+vif(model_pitchers)
+```
+
+I used Age, SO9, SO_BB, and IP in the pitcher model to explain differing dimensions of pitching performance while keeping multicollinearity to a minimum (each VIF value was under 5). Age represents the average stage of maturation for a pitcher and long-term viability, while SO9 captures the pitcher's ability to provide strikeouts, especially during high-leverage moments when avoiding contact is critical. SO_BB provides a dimension of a pitcher's strikeouts combined with a pitcher's control of the zone, which provides an evaluation of pitch quality and command. IP represents the workload, and strike rate across a robust sample (long/short term) during a season. Ultimately, I could continue to make various selections based on how to present an all-encompassing depiction of performance while minimizing potential redundancy and picking the variables that contribute to similar understanding in the model considered for input while also including different dimensions of performance.
+
+## Testing the Model
+
+### Hitters Test
+
+```{r echo=FALSE}
+model_test_hitters_data$transition_prob <- predict(
+  model_hitters, 
+  newdata = model_test_hitters_data, 
+  type = "response"
+)
+
+likely_transition_players <- model_test_hitters_data %>%
+  filter(transition_prob >= 0.5)
+
+unique_names <- unique(likely_transition_players$Name)
+print(unique_names)
+
+n_unique_hitters <- model_test_hitters_data %>%
+  distinct(Name) %>%
+  nrow()
+
+past_unique_hitters <- past_hitters_npb %>%
+  distinct(Name) %>%
+  nrow()
+
+correct_transitions_hitters <- 9
+total_transitions_hitters <- past_unique_hitters
+transition_accuracy_hitters <- round((correct_transitions_hitters / total_transitions_hitters) * 100, 1)
+
+correct_non_transitions_hitters <- n_unique_hitters - 9
+total_non_transitions_hitters <- n_unique_hitters
+non_transition_accuracy_hitters <- round((correct_non_transitions_hitters / total_non_transitions_hitters) * 100, 1)
+
+cat("Hitters - Correct Transition Predictions:", transition_accuracy_hitters, "%\n")
+cat("Hitters - Correct Not-Yet-Transitioned Predictions:", non_transition_accuracy_hitters, "%\n")
+```
+
+The model test results for the "Hitters Test" are highly predictive for a sample of 18 baseball players, primarily Japanese, with a few foreign names like Dayán Viciedo and Neftali Soto. The model was 90% accurate in correctly predicting players who have transitioned, likely to some career milestone like making it to Major League Baseball (MLB) or another significant professional transition. Also, it accurately forecasted 94.9% of still-to-transition players, indicating high performance at forecasting those who are still within their existing professional setting, i.e., Nippon Professional Baseball (NPB). This indicates the model is highly able at differentiation of players based on their career progress, with modest better performance in forecasting non-transitions. The presence of high-profile players such as Shohei Ohtani and Ichiro Suzuki with lesser-known international names such as Yuki Yanagita and Hotaka Yamakawa shows the model's generality for applying to a variety of player profiles.
+
+### Pitchers Test
+
+```{r echo=FALSE}
+model_test_pitchers_data <- model_test_pitchers_data %>%
+  mutate(SO_BB = ifelse(BB == 0, NA, SO / BB))
+
+model_test_pitchers_data <- model_test_pitchers_data %>%
+  mutate(transitioned = ifelse(Name %in% past_pitchers_mlb$Name, 1, 0))
+
+model_test_pitchers_data <- model_test_pitchers_data %>%
+  mutate(age_group = case_when(
+    Age < 26 ~ "young",
+    Age >= 26 & Age < 32 ~ "mid-career",
+    Age >= 32 ~ "veteran"
+))
+
+model_test_pitchers_data$transition_prob <- predict(
+  model_pitchers, 
+  newdata = model_test_pitchers_data, 
+  type = "response"
+)
+
+likely_transition_players <- model_test_pitchers_data %>%
+  filter(transition_prob >= 0.5)
+
+unique_names <- unique(likely_transition_players$Name)
+print(unique_names)
+
+n_unique_pitchers <- model_test_pitchers_data %>%
+  distinct(Name) %>%
+  nrow()
+
+unique_past_pitchers <- past_pitchers_npb %>%
+  distinct(Name) %>%
+  nrow()
+
+correct_transitions_pitchers <- 16
+total_transitions_pitchers <- unique_past_pitchers
+transition_accuracy_pitchers <- round((correct_transitions_pitchers / total_transitions_pitchers) * 100, 1)
+
+correct_non_transitions_pitchers <- n_unique_pitchers - 11
+total_non_transitions_pitchers <- n_unique_pitchers
+non_transition_accuracy_pitchers <- round((correct_non_transitions_pitchers / total_non_transitions_pitchers) * 100, 1)
+
+cat("Pitchers - Correct Transition Predictions:", transition_accuracy_pitchers, "%\n")
+cat("Pitchers - Correct Not-Yet-Transitioned Predictions:", non_transition_accuracy_pitchers, "%\n")
+```
+
+The model test results of the "Pitchers Test" show high predictive power for a group of 27 pitchers, the majority being Japanese with a few international players like Pierce Johnson. The model showed an accuracy of 80% in recognizing pitchers who have made a switch, probably to Major League Baseball (MLB) or a major career switch. It did even better when projecting pitchers yet to move, at a 96.1% accuracy, reflecting strong capacity to identify those still active in their native leagues, such as Nippon Professional Baseball (NPB). The list includes headline names such as Shohei Ohtani, Yu Darvish, and Yoshinobu Yamamoto, as well as lesser names such as Yuya Yanagi and Taisuke Yamaoka, to reflect the model's use on different pitcher profiles. Though the accuracy of predicting transitions is somewhat lower than the hitters' model (80% compared to 90%), that of not-yet-transitioning is somewhat greater (96.1% compared to 94.9%), emphasizing the model's strength at separating pitchers on the basis of their current career status.
+
+\newpage
+
+## Player Predictions
+
+### Hitters Prediction
+
+```{r echo=FALSE}
+combined_npb_hitters_data_2 <- combined_npb_hitters_data_2 %>%
+  mutate(transitioned = ifelse(Name %in% past_hitters_npb$Name, 1, 0))
+
+combined_npb_hitters_data_2$K_percent <- (combined_npb_hitters_data_2$SO / combined_npb_hitters_data_2$PA) * 100
+
+model_hitters_data <- combined_npb_hitters_data_2 %>%
+  filter(transitioned != 1)
+
+model_hitters_data <- model_hitters_data %>%
+  mutate(age_group = case_when(
+    Age < 26 ~ "young",
+    Age >= 26 & Age < 32 ~ "mid-career",
+    Age >= 32 ~ "veteran"
+))
+
+model_hitters_data$transition_prob <- predict(
+  model_hitters, 
+  newdata = model_hitters_data, 
+  type = "response"
+)
+
+likely_transition_players <- model_hitters_data %>%
+  filter(transition_prob >= 0.5)
+
+likely_transition_names <- unique(likely_transition_players$Name)
+
+likely_hitters_stats <- combined_npb_hitters_data_2 %>%
+  filter(Name %in% likely_transition_names) %>%
+  select(Name, Season, Age, HR, BA, OPS, K_percent)
+
+likely_hitters_probs <- likely_transition_players %>%
+  select(Name, Season, transition_prob)
+
+likely_hitters_combined <- merge(likely_hitters_stats, likely_hitters_probs, by = c("Name", "Season"))
+
+likely_hitters_top_season <- likely_hitters_combined %>%
+  group_by(Name) %>%
+  slice_max(transition_prob, n = 1) %>%
+  ungroup()
+
+print(likely_hitters_top_season)
+```
+
+The Hitters Prediction takes a look at the performance measures for four players in 2022-2024. Age, OPS and K%, along with transition probabilities, most likely to transition to Major League Baseball (MLB) or make another similar pivot. As of the end of 2022, Munetaka Murakami, who was 22, has an elite performance level measured by an OPS of 1.17, 56 HR, and 20.9% K% with a 0.992 transition probability. Murakami's age and plus-plus power ensured his transition could be considered a near lock! Kotaro Kiyomiya, at 25 in 2024 had good, bordering on great, performance with an OPS of 0.898, 15 HR, and 18.8% K%, and 0.588 transition probability. Kiyomiya can be classified as a good, but not obvious, prospect for transition based on his age and just-above-average performance metrics. Based on his 0.867 OPS, 29 HR and 14.0% K%, Shugo Maki, also 25 in 2023, had a reasonable performance value considering his transition probability of 0.501. Maki's numbers presented an overall complete profile that only earned a probability of even chance for transition, mostly likely due to the lack of jaw-dropping offensive metrics that convinced the model he would transition. Tyler Austin, aged 32 in 2024 provided a solid performance rating with an OPS of 0.983, 25 HR and 19.8% K %. Yet based on the table transition probability of 0.501, the impact of age clearly made his chances for transition more diminished than they otherwise should have been..The reflection of the model overall pointed to concepts of young age, high OPS and acceptable K% as notable and impactful driving variables for transition probability, and Murakami stands out based on age and offensive performance. Austin's numbers were great, but they were in contrast to his age which drove down his transition probability.
+
+### Pitchers Prediction
+
+```{r echo=FALSE}
+combined_npb_pitchers_data_2 <- combined_npb_pitchers_data_2 %>%
+  mutate(transitioned = ifelse(Name %in% past_pitchers_npb$Name, 1, 0))
+
+combined_npb_pitchers_data_2 <- combined_npb_pitchers_data_2 %>%
+  mutate(SO_BB = ifelse(BB == 0, NA, SO / BB))
+
+model_pitchers_data <- combined_npb_pitchers_data_2 %>%
+  filter(transitioned != 1)
+
+model_pitchers_data <- model_pitchers_data %>%
+  mutate(age_group = case_when(
+    Age < 26 ~ "young",
+    Age >= 26 & Age < 32 ~ "mid-career",
+    Age >= 32 ~ "veteran"
+))
+
+model_pitchers_data$transition_prob <- predict(
+  model_pitchers, 
+  newdata = model_pitchers_data, 
+  type = "response"
+)
+
+likely_transition_pitchers <- model_pitchers_data %>%
+  filter(transition_prob >= 0.5)
+
+likely_transition_pitcher_names <- unique(likely_transition_pitchers$Name)
+
+likely_pitchers_stats <- combined_npb_pitchers_data_2 %>%
+  filter(Name %in% likely_transition_pitcher_names) %>%
+  select(Name, Season, Age, IP, WHIP, SO9, SO_BB)
+
+likely_pitchers_probs <- likely_transition_pitchers %>%
+  select(Name, Season, transition_prob)
+
+likely_pitchers_combined <- merge(likely_pitchers_stats, likely_pitchers_probs, by = c("Name", "Season"))
+
+likely_pitchers_top_season <- likely_pitchers_combined %>%
+  group_by(Name) %>%
+  slice_max(transition_prob, n = 1) %>%
+  ungroup()
+
+print(likely_pitchers_top_season, n = Inf)
+```
+
+The Pitchers Prediction model gives 21 pitchers based on their anticipated performance metrics from 2022-2024 based on their age, K/9, and K/BB.... in all likelihood they will transition to MLB or a career with similar metrics. In the sample of these 21 pitchers, younger pitchers with a higher K/9 and K/BB ratio haved higher transition probabilities. For example, Shoki Murakami, who was 25 years old in 2023 had an 8.5 K/9 and a 9.13 K/BB which provided him with a transition probability of 0.879; this indicates that he had elite strikeout ability with elite control. Raidel Martínez, who was 26 years old in 2023, has a 12.0 K/9 and a 15.5 K/BB which resulted in a transition probability of 0.854, likely because to the performance metrics and dominance he had as a reliever with lower IP. Hiroya Miyagi, who was 22 years old in 2024 has an 8.8 K/9 and a 6.32 K/BB and yielded a transition probability of 0.761, where young age likely raises the probability of a transition. Older pitchers like Kohei Arihara, who was 31 years old in 2024, has modestly lower performance metrics of a 6.8 K/9 and 3.70 K/BB leading to a lower probability of transition at 0.560, and combined with age, offsets their strong metrics. Katsuki Azuma, who was 27 years old in 2023 has a K/9 of 6.9 but a very strong K/BB of 8.87 meaning he has a transition probability of 0.824, which indicates control is more important than a moderate K/9 for transition probability. The model appears to detail its main predictors of transition, which are younger age (20-25), higher K/9 (greater than 8.0), and K/BB (greater than 4.0), notwithstanding the transition probabilities that could yield higher transition probabilities for older pitchers if they exhibited elite ratios.
+
+# Conclusion
+
+The research conducted on Japanese baseball players moving from Nippon Professional Baseball (NPB) to Major League Baseball (MLB) shows that younger players who have consistently performed in key statistical categories, have the best chances of achieving a successful transition. For hitters, players with an on-base plus slugging (OPS) over 0.850 and a 16-18% strikeout percentage (K%) were found to be positive candidates, with the best success being between 24-31 years old, for example Munetaka Murakami has a .44 OPS and 0.992 transition probability at 22 years old. For pitchers, players need a K/9 over 8.0, a K/BB ratio greater than 4.0, and have pitched enough innings, with the peak years is between 24-27 years old (Shoki Murakami - 8.5 K/9, 9.13 K/BB, 0.879 probability; Raidel Martínez - 12.0 K/9, 15.5 K/BB, 0.854 probability). The logistic regression models achieved 90% accuracy for hitters’ transitions and 80% for pitchers, and if considering non-transitions achieved 94.9% and 96.1%, respectively supporting the validity of the metrics. The fact that we can now concretely profile salient data suggests the MLB teams prioritize selecting players who can adapt and develop; and give them a better chance of consistently producing rather than erratic spikes. 
+
+The influx of NPB players into MLB has increased due to the globalization of baseball, as well as the improved MLB scouting of NPB, which was spurred by Hideo Nomo and Ichiro Suzuki. The data continues to show a trend toward younger players, with an apparent cap at age 31 for hitters, and a cap of 30-35 years old with pitchers. Tyler Austin and Kohei Arihara are examples of older players that don't benefit from the transition probability percentage, despite all of the metrics suggesting a successful transition. We know the 1998 posting system worked for MLB, as transitioning players showed superior performance to their NPB counterparts (OPS for transition players 0.950-1.000, NPB players 0.650-0.700) and MLB was able to pinpoint star players in NPB. This study demonstrates that youth, consistency, and elite metrics are strong predictors of success, and that younger players with these traits are the future of the NPB-to-MLB pipeline, which is growing stronger and stronger.
